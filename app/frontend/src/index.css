@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        /* Premium Dark Theme "Nebula" */
+        --background: 240 20% 4%;
+        /* Very deep blue-black */
+        --foreground: 0 0% 98%;
+
+        --card: 240 24% 8%;
+        /* Slightly lighter deep blue */
+        --card-foreground: 0 0% 98%;
+
+        --popover: 240 24% 8%;
+        --popover-foreground: 0 0% 98%;
+
+        --primary: 265 80% 60%;
+        /* Vibrant Violet */
+        --primary-foreground: 0 0% 100%;
+
+        --secondary: 180 50% 15%;
+        /* Deep Teal/Cyan hints */
+        --secondary-foreground: 180 80% 80%;
+
+        --muted: 240 20% 12%;
+        --muted-foreground: 240 20% 65%;
+
+        --accent: 265 80% 60%;
+        --accent-foreground: 0 0% 100%;
+
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 0 0% 98%;
+
+        --border: 240 20% 12%;
+        --input: 240 20% 12%;
+        --ring: 265 80% 60%;
+
+        --radius: 1rem;
+        /* More rounded */
+    }
+
+    .dark {
+        /* Ensure dark mode matches root in this specific design preference */
+        --background: 240 20% 4%;
+        --foreground: 0 0% 98%;
+        --card: 240 24% 8%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 24% 8%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 265 80% 60%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 180 50% 15%;
+        --secondary-foreground: 180 80% 80%;
+        --muted: 240 20% 12%;
+        --muted-foreground: 240 20% 65%;
+        --accent: 265 80% 60%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 20% 12%;
+        --input: 240 20% 12%;
+        --ring: 265 80% 60%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
+    }
+}
+
+@layer utilities {
+
+    /* Glassmorphism Utility */
+    .glass {
+        @apply bg-background/60 backdrop-blur-xl border border-white/10 shadow-xl;
+    }
+
+    .glass-card,
+    .card-modern {
+        @apply bg-card/40 backdrop-blur-md border border-white/5 shadow-lg hover:border-white/10 transition-all duration-300 rounded-xl;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        @apply bg-transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-muted/50 rounded-full hover:bg-muted transition-colors;
+    }
+
+    /* Animations */
+    @keyframes fade-in {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-fade-in {
+        animation: fade-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    @keyframes slide-in-right {
+        from {
+            opacity: 0;
+            transform: translateX(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    .animate-slide-in {
+        animation: slide-in-right 0.3s ease-out forwards;
+    }
+
+    @keyframes blob {
+        0% {
+            transform: translate(0px, 0px) scale(1);
+        }
+
+        33% {
+            transform: translate(30px, -50px) scale(1.1);
+        }
+
+        66% {
+            transform: translate(-20px, 20px) scale(0.9);
+        }
+
+        100% {
+            transform: translate(0px, 0px) scale(1);
+        }
+    }
+
+    .animate-blob {
+        animation: blob 10s infinite;
+    }
+
+    .animation-delay-2000 {
+        animation-delay: 2s;
+    }
+
+    .animation-delay-4000 {
+        animation-delay: 4s;
+    }
+
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
