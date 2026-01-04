@@ -16,6 +16,7 @@ export const AppProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [theme, setTheme] = useState('violet');
   const [loading, setLoading] = useState(true);
+  const [zenMode, setZenMode] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -108,6 +109,12 @@ export const AppProvider = ({ children }) => {
   const addXP = async (amount, source = 'general') => {
     if (!user) return;
 
+    // ✅ Validation XP
+    if (typeof amount !== 'number' || isNaN(amount) || amount < 0) {
+      console.error('Invalid XP amount:', amount);
+      return;
+    }
+
     const newXP = user.xp + amount;
     let newLevel = user.level;
     let xpToNextLevel = user.xpToNextLevel;
@@ -127,11 +134,13 @@ export const AppProvider = ({ children }) => {
     await db.users.update(user.id, updatedUser);
     setUser(updatedUser);
 
-    // Analytics
-    const today = new Date().toDateString();
+    // Analytics - ✅ Normalisation de la date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const existingAnalytics = await db.analytics
       .where('date')
-      .equals(new Date(today))
+      .between(today, new Date(today.getTime() + 86400000))
       .first();
 
     if (existingAnalytics) {
@@ -141,7 +150,7 @@ export const AppProvider = ({ children }) => {
     } else {
       await db.analytics.add({
         id: `analytics-${Date.now()}`,
-        date: new Date(today),
+        date: today,
         xpEarned: amount,
         habitsCompleted: 0,
         questsCompleted: 0
@@ -155,7 +164,9 @@ export const AppProvider = ({ children }) => {
     theme,
     changeTheme,
     addXP,
-    loading
+    loading,
+    zenMode,
+    setZenMode
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -41,6 +41,21 @@ export const AuthProvider = ({ children }) => {
     (error) => Promise.reject(error)
   );
 
+  // ✅ Flag et queue pour éviter boucle infinie
+  let isRefreshing = false;
+  let failedQueue = [];
+
+  const processQueue = (error, token = null) => {
+    failedQueue.forEach(prom => {
+      if (error) {
+        prom.reject(error);
+      } else {
+        prom.resolve(token);
+      }
+    });
+    failedQueue = [];
+  };
+
   // Response interceptor to handle token refresh
   api.interceptors.response.use(
     (response) => response,
@@ -48,7 +63,20 @@ export const AuthProvider = ({ children }) => {
       const originalRequest = error.config;
 
       if (error.response?.status === 401 && !originalRequest._retry) {
+        if (isRefreshing) {
+          // ✅ Enqueue si refresh déjà en cours
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          }).then(token => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          }).catch(err => {
+            return Promise.reject(err);
+          });
+        }
+
         originalRequest._retry = true;
+        isRefreshing = true;
 
         try {
           const refreshToken = localStorage.getItem('refresh_token');
@@ -61,12 +89,17 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('access_token', access_token);
             setTokens(prev => ({ ...prev, access_token }));
 
+            processQueue(null, access_token);
+
             originalRequest.headers.Authorization = `Bearer ${access_token}`;
             return api(originalRequest);
           }
         } catch (refreshError) {
+          processQueue(refreshError, null);
           logout();
           return Promise.reject(refreshError);
+        } finally {
+          isRefreshing = false;
         }
       }
 

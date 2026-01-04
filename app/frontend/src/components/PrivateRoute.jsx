@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const PrivateRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -14,7 +14,7 @@ const PrivateRoute = ({ children }) => {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     // Redirect to auth page but save the location they were trying to go to
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }

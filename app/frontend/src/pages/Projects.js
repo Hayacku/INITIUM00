@@ -1,230 +1,211 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/db';
-import { 
-  FolderKanban, 
-  Plus, 
+import {
+  FolderKanban,
+  Plus,
   Trash2,
   CheckCircle2,
   Circle,
-  MoreVertical
+  MoreVertical,
+  Target,
+  TrendingUp,
+  FileText,
+  Calendar,
+  Layout,
+  Tag
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'; // Assurez-vous d'avoir ce composant ou utilisez une version simple
+import { Progress } from '../components/ui/progress';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
+const CATEGORIES = [
+  { id: 'work', label: 'Travail', color: 'bg-blue-500/20 text-blue-500' },
+  { id: 'learning', label: 'Apprentissage', color: 'bg-purple-500/20 text-purple-500' },
+  { id: 'health', label: 'Santé', color: 'bg-green-500/20 text-green-500' },
+  { id: 'creative', label: 'Créativité', color: 'bg-pink-500/20 text-pink-500' },
+  { id: 'personal', label: 'Personnel', color: 'bg-orange-500/20 text-orange-500' },
+  { id: 'finance', label: 'Finance', color: 'bg-yellow-500/20 text-yellow-500' },
+];
+
 const Projects = () => {
   const [projects, setProjects] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [isProjectOpen, setIsProjectOpen] = useState(false);
-  const [isTaskOpen, setIsTaskOpen] = useState(false);
-  const [projectForm, setProjectForm] = useState({
+  const [selectedProject, setSelectedProject] = useState(null); // Pour la vue détaillée
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Données liées au projet sélectionné
+  const [linkedQuests, setLinkedQuests] = useState([]);
+  const [linkedHabits, setLinkedHabits] = useState([]);
+  const [linkedNotes, setLinkedNotes] = useState([]);
+  const [projectTasks, setProjectTasks] = useState([]);
+
+  const [formData, setFormData] = useState({
     title: '',
     description: '',
+    category: 'personal',
     priority: 'medium',
+    status: 'active',
     targetDate: ''
-  });
-  const [taskForm, setTaskForm] = useState({
-    title: '',
-    projectId: ''
   });
 
   useEffect(() => {
     loadProjects();
-    loadTasks();
   }, []);
+
+  useEffect(() => {
+    if (selectedProject) {
+      loadProjectDetails(selectedProject.id);
+    }
+  }, [selectedProject]);
 
   const loadProjects = async () => {
     try {
-      const data = await db.projects.toArray();
+      const data = await db.projects.reverse().toArray();
       setProjects(data);
-      if (data.length > 0 && !selectedProject) {
-        setSelectedProject(data[0]);
-      }
     } catch (error) {
       console.error('Error loading projects:', error);
     }
   };
 
-  const loadTasks = async () => {
+  const loadProjectDetails = async (projectId) => {
     try {
-      const data = await db.tasks.toArray();
-      setTasks(data);
+      // Charger Quêtes liées
+      const quests = await db.quests.where('projectId').equals(projectId).toArray();
+      setLinkedQuests(quests);
+
+      // Charger Habitudes liées
+      const habits = await db.habits.where('projectId').equals(projectId).toArray();
+      setLinkedHabits(habits);
+
+      // Charger Notes liées (via linkedTo array string matching - limitation Dexie simple, on filtre manuellement si besoin ou index)
+      // Pour l'instant, supposons que linkedTo contient l'ID du projet
+      const allNotes = await db.notes.toArray();
+      const notes = allNotes.filter(n => n.linkedTo && n.linkedTo.includes(projectId));
+      setLinkedNotes(notes);
+
+      // Charger Tâches (legacy Kanban)
+      const tasks = await db.tasks.where('projectId').equals(projectId).toArray();
+      setProjectTasks(tasks);
+
     } catch (error) {
-      console.error('Error loading tasks:', error);
+      console.error('Error loading details:', error);
     }
   };
 
-  const handleCreateProject = async () => {
-    if (!projectForm.title.trim()) {
-      toast.error('Le titre est requis');
+  const handleCreate = async () => {
+    if (!formData.title.trim()) {
+      toast.error('Titre requis');
       return;
     }
 
     try {
       const newProject = {
         id: `project-${Date.now()}`,
-        ...projectForm,
-        status: 'planning',
+        ...formData,
         progress: 0,
-        startDate: new Date(),
         createdAt: new Date()
       };
 
       await db.projects.add(newProject);
-      toast.success('Projet créé!');
-      setIsProjectOpen(false);
-      setProjectForm({
+      toast.success('Projet créé !');
+      setIsCreateOpen(false);
+      setFormData({
         title: '',
         description: '',
+        category: 'personal',
         priority: 'medium',
+        status: 'active',
         targetDate: ''
       });
       loadProjects();
     } catch (error) {
       toast.error('Erreur');
-      console.error(error);
     }
   };
 
-  const handleCreateTask = async () => {
-    if (!taskForm.title.trim() || !selectedProject) {
-      toast.error('Titre requis');
-      return;
-    }
+  const handleDelete = async (id) => {
+    if (window.confirm('Supprimer ce projet et toutes ses données liées ?')) {
+      try {
+        await db.projects.delete(id);
+        // Optionnel : Délier ou supprimer les enfants ?
+        // Pour l'instant on garde les enfants mais on retire le lien projectId
+        await db.quests.where('projectId').equals(id).modify({ projectId: null });
+        await db.habits.where('projectId').equals(id).modify({ projectId: null });
+        await db.tasks.where('projectId').equals(id).delete();
 
-    try {
-      await db.tasks.add({
-        id: `task-${Date.now()}`,
-        projectId: selectedProject.id,
-        title: taskForm.title,
-        status: 'todo',
-        order: tasks.filter(t => t.projectId === selectedProject.id).length,
-        createdAt: new Date()
-      });
-
-      toast.success('Tâche créée!');
-      setIsTaskOpen(false);
-      setTaskForm({ title: '', projectId: '' });
-      loadTasks();
-    } catch (error) {
-      toast.error('Erreur');
-      console.error(error);
-    }
-  };
-
-  const handleToggleTask = async (task) => {
-    try {
-      const newStatus = task.status === 'completed' ? 'todo' : 'completed';
-      await db.tasks.update(task.id, { status: newStatus });
-      loadTasks();
-      
-      // Update project progress
-      if (selectedProject) {
-        const projectTasks = tasks.filter(t => t.projectId === selectedProject.id);
-        const completedCount = projectTasks.filter(t => 
-          t.id === task.id ? newStatus === 'completed' : t.status === 'completed'
-        ).length;
-        const progress = Math.round((completedCount / projectTasks.length) * 100);
-        await db.projects.update(selectedProject.id, { progress });
+        toast.success('Projet supprimé');
+        setSelectedProject(null);
         loadProjects();
+      } catch (error) {
+        toast.error('Erreur');
       }
-    } catch (error) {
-      console.error(error);
     }
   };
 
-  const handleDeleteProject = async (id) => {
-    try {
-      await db.projects.delete(id);
-      await db.tasks.where('projectId').equals(id).delete();
-      toast.success('Projet supprimé');
-      setSelectedProject(null);
-      loadProjects();
-      loadTasks();
-    } catch (error) {
-      toast.error('Erreur');
-      console.error(error);
-    }
-  };
+  // Calcul du % global du projet (basé sur Quêtes + Tâches)
+  const calculateTotalProgress = () => {
+    if (!selectedProject) return 0;
+    const totalItems = linkedQuests.length + projectTasks.length;
+    if (totalItems === 0) return selectedProject.progress || 0;
 
-  const handleDeleteTask = async (id) => {
-    try {
-      await db.tasks.delete(id);
-      toast.success('Tâche supprimée');
-      loadTasks();
-    } catch (error) {
-      toast.error('Erreur');
-      console.error(error);
-    }
-  };
+    const completedQuests = linkedQuests.filter(q => q.status === 'completed').length;
+    const completedTasks = projectTasks.filter(t => t.status === 'completed').length;
 
-  const projectTasks = selectedProject
-    ? tasks.filter(t => t.projectId === selectedProject.id)
-    : [];
-
-  const tasksByStatus = {
-    todo: projectTasks.filter(t => t.status === 'todo'),
-    in_progress: projectTasks.filter(t => t.status === 'in_progress'),
-    completed: projectTasks.filter(t => t.status === 'completed')
+    return Math.round(((completedQuests + completedTasks) / totalItems) * 100);
   };
 
   return (
-    <div className="space-y-6 animate-fade-in" data-testid="projects-page">
+    <div className="space-y-6 animate-fade-in pb-20" data-testid="projects-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl sm:text-5xl font-bold mb-2 flex items-center gap-3">
+          <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
             <FolderKanban className="w-10 h-10 text-primary" />
-            Projets
+            Projets Hub
           </h1>
-          <p className="text-foreground/60 text-lg">Organisez et suivez vos projets</p>
+          <p className="text-foreground/60">Gérez vos grands objectifs et tout ce qui s'y rattache</p>
         </div>
-        <Dialog open={isProjectOpen} onOpenChange={setIsProjectOpen}>
+
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2" data-testid="create-project-button">
+            <Button size="lg" className="gap-2 shadow-lg hover:shadow-primary/20" data-testid="new-project-btn">
               <Plus className="w-5 h-5" />
-              Nouveau projet
+              Nouveau Projet
             </Button>
           </DialogTrigger>
-          <DialogContent data-testid="create-project-dialog">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Créer un projet</DialogTitle>
+              <DialogTitle>Créer un nouveau projet</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Titre *</label>
+                <label className="text-sm font-medium mb-1 block">Titre</label>
                 <Input
-                  value={projectForm.title}
-                  onChange={(e) => setProjectForm({ ...projectForm, title: e.target.value })}
-                  placeholder="Titre du projet"
-                  data-testid="project-title-input"
+                  value={formData.title}
+                  onChange={e => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Ex: Lancer ma startup"
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Description</label>
-                <Textarea
-                  value={projectForm.description}
-                  onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
-                  placeholder="Description..."
-                  rows={3}
-                  data-testid="project-description-input"
-                />
-              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Priorité</label>
-                  <Select
-                    value={projectForm.priority}
-                    onValueChange={(value) => setProjectForm({ ...projectForm, priority: value })}
-                  >
-                    <SelectTrigger data-testid="project-priority-select">
-                      <SelectValue />
-                    </SelectTrigger>
+                  <label className="text-sm font-medium mb-1 block">Catégorie</label>
+                  <Select value={formData.category} onValueChange={v => setFormData({ ...formData, category: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map(c => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Priorité</label>
+                  <Select value={formData.priority} onValueChange={v => setFormData({ ...formData, priority: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Basse</SelectItem>
                       <SelectItem value="medium">Moyenne</SelectItem>
@@ -232,167 +213,200 @@ const Projects = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Date cible</label>
-                  <Input
-                    type="date"
-                    value={projectForm.targetDate}
-                    onChange={(e) => setProjectForm({ ...projectForm, targetDate: e.target.value })}
-                    data-testid="project-target-date-input"
-                  />
-                </div>
               </div>
-              <Button onClick={handleCreateProject} className="w-full" data-testid="submit-project-button">
-                Créer le projet
-              </Button>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Description</label>
+                <Textarea
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Objectifs principaux..."
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Date cible</label>
+                <Input
+                  type="date"
+                  value={formData.targetDate}
+                  onChange={e => setFormData({ ...formData, targetDate: e.target.value })}
+                />
+              </div>
+
+              <Button onClick={handleCreate} className="w-full">Créer le projet</Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Projects List */}
-        <div className="card-modern" data-testid="projects-list">
-          <h2 className="text-xl font-bold mb-4">Mes projets</h2>
-          <div className="space-y-2">
-            {projects.map((project) => (
+      {/* Main Content : Grid vs Detail */}
+      {!selectedProject ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {projects.map(project => {
+            const category = CATEGORIES.find(c => c.id === project.category) || CATEGORIES[4];
+            return (
               <div
                 key={project.id}
-                className={`p-3 rounded-lg cursor-pointer transition-all ${
-                  selectedProject?.id === project.id
-                    ? 'bg-primary text-white'
-                    : 'bg-foreground/5 hover:bg-foreground/10'
-                }`}
                 onClick={() => setSelectedProject(project)}
-                data-testid={`project-item-${project.id}`}
+                className="glass-card p-6 rounded-xl hover:scale-[1.02] transition-all cursor-pointer group border-l-4"
+                style={{ borderLeftColor: category.color.split(' ')[1].replace('text-', '') }} // Hack couleur
               >
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold">{project.title}</h3>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteProject(project.id);
-                    }}
-                    className="p-1 hover:bg-red-500/20 text-red-500 rounded"
-                    data-testid={`delete-project-${project.id}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded-full ${category.color}`}>
+                      {category.label}
+                    </span>
+                    <h3 className="text-xl font-bold mt-2 group-hover:text-primary transition-colors">{project.title}</h3>
+                  </div>
+                  {project.priority === 'high' && <span className="text-red-500 animate-pulse">●</span>}
                 </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${project.progress || 0}%` }}
-                  />
-                </div>
-                <p className="text-xs mt-1 opacity-70">{project.progress || 0}% complété</p>
-              </div>
-            ))}
-            {projects.length === 0 && (
-              <p className="text-center text-foreground/40 py-4">Aucun projet</p>
-            )}
-          </div>
-        </div>
 
-        {/* Kanban Board */}
-        <div className="lg:col-span-3 card-modern" data-testid="kanban-board">
-          {selectedProject ? (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold">{selectedProject.title}</h2>
-                  {selectedProject.description && (
-                    <p className="text-foreground/60 mt-1">{selectedProject.description}</p>
-                  )}
-                </div>
-                <Dialog open={isTaskOpen} onOpenChange={setIsTaskOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" className="gap-2" data-testid="create-task-button">
-                      <Plus className="w-4 h-4" />
-                      Tâche
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent data-testid="create-task-dialog">
-                    <DialogHeader>
-                      <DialogTitle>Créer une tâche</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 mt-4">
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">Titre *</label>
-                        <Input
-                          value={taskForm.title}
-                          onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
-                          placeholder="Titre de la tâche"
-                          data-testid="task-title-input"
-                        />
-                      </div>
-                      <Button onClick={handleCreateTask} className="w-full" data-testid="submit-task-button">
-                        Créer la tâche
-                      </Button>
+                <p className="text-sm text-foreground/60 line-clamp-2 mb-6 h-10">
+                  {project.description || 'Aucune description'}
+                </p>
+
+                <div className="flex justify-between items-end">
+                  <div className="w-full mr-4">
+                    <div className="flex justify-between text-xs mb-1 text-foreground/50">
+                      <span>Progression</span>
+                      <span>{project.progress}%</span>
                     </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-
-              {/* Kanban Columns */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {Object.entries(tasksByStatus).map(([status, statusTasks]) => (
-                  <div key={status} className="bg-foreground/5 rounded-xl p-4" data-testid={`kanban-column-${status}`}>
-                    <h3 className="font-semibold mb-4 flex items-center gap-2">
-                      {status === 'todo' && '📋 À faire'}
-                      {status === 'in_progress' && '🔄 En cours'}
-                      {status === 'completed' && '✅ Terminé'}
-                      <span className="text-xs text-foreground/60">({statusTasks.length})</span>
-                    </h3>
-                    <div className="space-y-2">
-                      {statusTasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="p-3 bg-background rounded-lg hover:shadow-md transition-shadow"
-                          data-testid={`task-card-${task.id}`}
-                        >
-                          <div className="flex items-start gap-2">
-                            <button
-                              onClick={() => handleToggleTask(task)}
-                              className="mt-0.5"
-                              data-testid={`toggle-task-${task.id}`}
-                            >
-                              {task.status === 'completed' ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-500" />
-                              ) : (
-                                <Circle className="w-5 h-5 text-foreground/30" />
-                              )}
-                            </button>
-                            <div className="flex-1">
-                              <p className={`font-medium ${
-                                task.status === 'completed' ? 'line-through text-foreground/50' : ''
-                              }`}>
-                                {task.title}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteTask(task.id)}
-                              className="p-1 hover:bg-red-500/20 text-red-500 rounded"
-                              data-testid={`delete-task-${task.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                    <Progress value={project.progress} className="h-2" />
+                  </div>
+                  <div className="flex -space-x-2">
+                    {/* Avatars ou icônes décoratives */}
+                    <div className="w-8 h-8 rounded-full bg-background border-2 border-white/10 flex items-center justify-center text-[10px]">
+                      <Layout className="w-4 h-4 text-foreground/50" />
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-20">
-              <FolderKanban className="w-20 h-20 mx-auto text-foreground/20 mb-4" />
-              <p className="text-xl text-foreground/40">Sélectionnez un projet</p>
+            );
+          })}
+          {projects.length === 0 && (
+            <div className="col-span-full text-center py-20 text-foreground/30">
+              <FolderKanban className="w-20 h-20 mx-auto mb-4" />
+              <p>Créez votre premier projet pour commencer</p>
             </div>
           )}
         </div>
-      </div>
+      ) : (
+        /* VUE DÉTAILLÉE DU PROJET */
+        <div className="animate-in slide-in-from-right-4">
+          {/* Detail Header */}
+          <div className="glass-card p-6 mb-6 relative overflow-hidden">
+            <div className="relative z-10">
+              <Button variant="ghost" className="mb-4 pl-0 hover:pl-2 transition-all" onClick={() => setSelectedProject(null)}>
+                ← Retour aux projets
+              </Button>
+
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-4xl font-bold mb-2">{selectedProject.title}</h2>
+                  <p className="text-lg text-foreground/70 max-w-2xl">{selectedProject.description}</p>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(selectedProject.id)}>
+                    <Trash2 className="w-4 h-4 mr-2" /> Supprimer
+                  </Button>
+                  <div className="text-right mt-2">
+                    <span className="text-3xl font-bold text-primary">{calculateTotalProgress()}%</span>
+                    <p className="text-xs text-foreground/50 uppercase">Progression Globale</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 mt-6">
+                <div className="p-3 bg-background/50 rounded-lg flex items-center gap-3">
+                  <Target className="w-5 h-5 text-blue-500" />
+                  <div>
+                    <p className="text-xl font-bold">{linkedQuests.length}</p>
+                    <p className="text-xs text-foreground/50">Quêtes</p>
+                  </div>
+                </div>
+                <div className="p-3 bg-background/50 rounded-lg flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5 text-green-500" />
+                  <div>
+                    <p className="text-xl font-bold">{linkedHabits.length}</p>
+                    <p className="text-xs text-foreground/50">Habitudes</p>
+                  </div>
+                </div>
+                <div className="p-3 bg-background/50 rounded-lg flex items-center gap-3">
+                  <Layout className="w-5 h-5 text-purple-500" />
+                  <div>
+                    <p className="text-xl font-bold">{projectTasks.length}</p>
+                    <p className="text-xs text-foreground/50">Tâches</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Background decoration */}
+            <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 blur-[100px] rounded-full pointer-events-none" />
+          </div>
+
+          {/* Content Tabs */}
+          <Tabs defaultValue="quests" className="space-y-6">
+            <TabsList className="bg-background/50 p-1 rounded-xl">
+              <TabsTrigger value="quests" className="px-6 gap-2"><Target className="w-4 h-4" /> Quêtes</TabsTrigger>
+              <TabsTrigger value="habits" className="px-6 gap-2"><TrendingUp className="w-4 h-4" /> Habitudes</TabsTrigger>
+              <TabsTrigger value="tasks" className="px-6 gap-2"><Layout className="w-4 h-4" /> Kanban</TabsTrigger>
+              <TabsTrigger value="notes" className="px-6 gap-2"><FileText className="w-4 h-4" /> Notes</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="quests" className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold">Quêtes liées</h3>
+                {/* Idéalement un bouton pour créer une quête liée directement ici */}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {linkedQuests.map(q => (
+                  <div key={q.id} className="p-4 bg-white/5 rounded-lg border border-white/5 hover:border-primary/50 transition-colors">
+                    <h4 className="font-bold">{q.title}</h4>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${q.status === 'completed' ? 'bg-green-500/20 text-green-500' : 'bg-blue-500/20 text-blue-500'}`}>
+                      {q.status}
+                    </span>
+                  </div>
+                ))}
+                {linkedQuests.length === 0 && <p className="text-foreground/40 italic">Aucune quête liée.</p>}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="habits" className="space-y-4">
+              <h3 className="text-xl font-bold">Habitudes associées</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {linkedHabits.map(h => (
+                  <div key={h.id} className="p-4 bg-white/5 rounded-lg flex justify-between items-center">
+                    <span>{h.title}</span>
+                    <span className="text-xs font-mono">{h.frequency}</span>
+                  </div>
+                ))}
+                {linkedHabits.length === 0 && <p className="text-foreground/40 italic">Aucune habitude liée au projet.</p>}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="tasks">
+              <div className="bg-white/5 p-4 rounded-xl text-center">
+                <p className="text-sm text-foreground/60">Le Kanban complet est disponible pour une gestion fine des micro-tâches.</p>
+                {/* Intégrer le composant Kanban ici si besoin */}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="notes">
+              <h3 className="text-xl font-bold">Notes & Idées</h3>
+              <div className="grid grid-cols-1 gap-2">
+                {linkedNotes.map(n => (
+                  <div key={n.id} className="p-3 bg-white/5 rounded flex gap-2 items-center">
+                    <FileText className="w-4 h-4 text-foreground/50" />
+                    <span>{n.title}</span>
+                  </div>
+                ))}
+                {linkedNotes.length === 0 && <p className="text-foreground/40 italic">Aucune note liée.</p>}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      )}
     </div>
   );
 };

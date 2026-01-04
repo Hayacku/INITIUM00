@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/db';
-import { 
-  Calendar as CalendarIcon, 
-  Plus, 
+import {
+  Calendar as CalendarIcon,
+  Plus,
   Clock,
   Trash2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Target,
+  Dumbbell
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
@@ -18,7 +20,12 @@ import { fr } from 'date-fns/locale';
 
 const Agenda = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
+
+  // Données
   const [events, setEvents] = useState([]);
+  const [quests, setQuests] = useState([]);
+  const [trainings, setTrainings] = useState([]);
+
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isOpen, setIsOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -33,15 +40,26 @@ const Agenda = () => {
   const [editEvent, setEditEvent] = useState(null);
 
   useEffect(() => {
-    loadEvents();
+    loadAllData();
   }, [currentDate]);
 
-  const loadEvents = async () => {
+  const loadAllData = async () => {
     try {
-      const data = await db.events.toArray();
-      setEvents(data);
+      // Charger événements
+      const eventsData = await db.events.toArray();
+      setEvents(eventsData);
+
+      // Charger quêtes (actives ou non, tant qu'il y a une échéance)
+      const questsData = await db.quests.filter(q => !!q.dueDate).toArray();
+      setQuests(questsData);
+
+      // Charger entraînements programmés
+      // On filtre ceux qui ont une scheduleDate
+      const trainingsData = await db.training.filter(t => !!t.scheduleDate).toArray();
+      setTrainings(trainingsData);
+
     } catch (error) {
-      console.error('Error loading events:', error);
+      console.error('Error loading agenda data:', error);
     }
   };
 
@@ -89,18 +107,25 @@ const Agenda = () => {
         location: ''
       });
       setEditEvent(null);
-      loadEvents();
+      loadAllData();
     } catch (error) {
       toast.error('Erreur');
       console.error(error);
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, type) => {
     try {
-      await db.events.delete(id);
+      if (type === 'event') await db.events.delete(id);
+      // On ne supprime pas une quête ou un training depuis l'agenda pour éviter les fausses manips, 
+      // ou alors on affiche un toast explicite. Pour l'instant, seulement les events custom.
+      else {
+        toast.error("Impossible de supprimer cet élément depuis l'agenda.");
+        return;
+      }
+
       toast.success('Événement supprimé');
-      loadEvents();
+      loadAllData();
     } catch (error) {
       toast.error('Erreur');
       console.error(error);
@@ -108,6 +133,10 @@ const Agenda = () => {
   };
 
   const handleEdit = (event) => {
+    if (event.source !== 'event') {
+      toast.info("Modifiez cet élément depuis sa page dédiée.");
+      return;
+    }
     setEditEvent(event);
     setFormData({
       title: event.title,
@@ -127,20 +156,39 @@ const Agenda = () => {
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
-  const getEventsForDay = (day) => {
-    return events.filter(event => isSameDay(new Date(event.startDate), day));
+  // Agrégation des items par date
+  const getItemsForDay = (day) => {
+    const dayEvents = events.filter(e => isSameDay(new Date(e.startDate), day)).map(e => ({ ...e, source: 'event' }));
+
+    const dayQuests = quests.filter(q => isSameDay(new Date(q.dueDate), day)).map(q => ({
+      id: q.id,
+      title: q.title,
+      type: 'deadline', // pour badge couleur
+      startDate: new Date(q.dueDate), // approximation pour le tri
+      source: 'quest',
+      description: 'Échéance de quête'
+    }));
+
+    const dayTrainings = trainings.filter(t => isSameDay(new Date(t.scheduleDate), day)).map(t => ({
+      id: t.id,
+      title: `Entraînement: ${t.type}`,
+      type: 'training',
+      startDate: new Date(t.scheduleDate),
+      source: 'training',
+      description: `${t.duration} min - ${t.intensity}`
+    }));
+
+    return [...dayEvents, ...dayQuests, ...dayTrainings];
   };
 
-  const selectedDayEvents = events.filter(event => 
-    isSameDay(new Date(event.startDate), selectedDate)
-  );
+  const selectedDayItems = getItemsForDay(selectedDate); // Recalcule pour le jour sélectionné
 
   return (
     <div className="space-y-6 animate-fade-in" data-testid="agenda-page">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl sm:text-5xl font-bold mb-2 flex items-center gap-3">
+          <h1 className="text-4xl sm:text-5xl font-bold mb-2 flex items-center gap-3" data-testid="agenda-title">
             <CalendarIcon className="w-10 h-10 text-primary" />
             Agenda
           </h1>
@@ -271,35 +319,33 @@ const Agenda = () => {
               </div>
             ))}
             {calendarDays.map((day, idx) => {
-              const dayEvents = getEventsForDay(day);
+              const dayItems = getItemsForDay(day);
               const isToday = isSameDay(day, new Date());
               const isSelected = isSameDay(day, selectedDate);
               const isCurrentMonth = day.getMonth() === currentDate.getMonth();
+
+              // Indicateurs de contenu
+              const hasEvents = dayItems.some(i => i.source === 'event');
+              const hasQuests = dayItems.some(i => i.source === 'quest');
+              const hasTraining = dayItems.some(i => i.source === 'training');
 
               return (
                 <button
                   key={idx}
                   onClick={() => setSelectedDate(day)}
-                  className={`aspect-square p-2 rounded-lg transition-all relative ${
-                    isSelected ? 'bg-primary text-white' :
+                  className={`aspect-square p-2 rounded-lg transition-all relative ${isSelected ? 'bg-primary text-white' :
                     isToday ? 'bg-primary/20 text-primary font-bold' :
-                    isCurrentMonth ? 'hover:bg-foreground/5' : 'text-foreground/30'
-                  }`}
+                      isCurrentMonth ? 'hover:bg-foreground/5' : 'text-foreground/30'
+                    }`}
                   data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
                 >
                   <span>{format(day, 'd')}</span>
-                  {dayEvents.length > 0 && (
-                    <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-0.5">
-                      {dayEvents.slice(0, 3).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`w-1 h-1 rounded-full ${
-                            isSelected ? 'bg-white' : 'bg-primary'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-0.5 max-w-[80%] justify-center overflow-hidden">
+                    {/* Dots indicateurs simples */}
+                    {hasEvents && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`} />}
+                    {hasQuests && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-red-500'}`} />}
+                    {hasTraining && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-orange-500'}`} />}
+                  </div>
                 </button>
               );
             })}
@@ -312,57 +358,75 @@ const Agenda = () => {
             {format(selectedDate, 'd MMMM yyyy', { locale: fr })}
           </h3>
           <div className="space-y-3">
-            {selectedDayEvents.length > 0 ? (
-              selectedDayEvents.map((event) => (
+            {selectedDayItems.length > 0 ? (
+              selectedDayItems.map((item, idx) => (
                 <div
-                  key={event.id}
-                  className="p-4 bg-foreground/5 rounded-xl hover:bg-foreground/10 transition-colors"
-                  data-testid={`event-item-${event.id}`}
+                  key={`${item.source}-${item.id}-${idx}`}
+                  className="p-4 bg-foreground/5 rounded-xl hover:bg-foreground/10 transition-colors border-l-4"
+                  style={{
+                    borderLeftColor:
+                      item.source === 'event' ? '#3b82f6' :
+                        item.source === 'quest' ? '#ef4444' :
+                          item.source === 'training' ? '#f97316' : 'transparent'
+                  }} // Blue, Red, Orange
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <h4 className="font-semibold">{event.title}</h4>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(event)} title="Modifier">
-                        <Plus className="w-4 h-4 rotate-45" />
-                      </Button>
-                      <button
-                        onClick={() => handleDelete(event.id)}
-                        className="p-1 hover:bg-red-500/20 text-red-500 rounded transition-colors"
-                        data-testid={`delete-event-${event.id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <h4 className="font-semibold">{item.title}</h4>
+                    {item.source === 'event' ? (
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(item)} title="Modifier">
+                          <Plus className="w-4 h-4 rotate-45" />
+                        </Button>
+                        <button
+                          onClick={() => handleDelete(item.id, item.source)}
+                          className="p-1 hover:bg-red-500/20 text-red-500 rounded transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-xs opacity-50 uppercase font-bold tracking-wider">{item.source === 'quest' ? 'Quête' : 'Sport'}</div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-foreground/60">
-                    <Clock className="w-4 h-4" />
-                    <span>
-                      {format(new Date(event.startDate), 'HH:mm')} - 
-                      {format(new Date(event.endDate), 'HH:mm')}
-                    </span>
-                  </div>
-                  {event.location && (
-                    <div className="text-sm text-foreground/60 mt-1">
-                      <span className="font-medium">Lieu :</span> {event.location}
+
+                  {item.source === 'event' && (
+                    <div className="flex items-center gap-2 text-sm text-foreground/60 mb-1">
+                      <Clock className="w-4 h-4" />
+                      <span>
+                        {format(new Date(item.startDate), 'HH:mm')} -
+                        {item.endDate && format(new Date(item.endDate), 'HH:mm')}
+                      </span>
                     </div>
                   )}
-                  {event.description && (
+
+                  {item.source === 'training' && (
+                    <div className="flex items-center gap-2 text-sm text-foreground/60 mb-1">
+                      <Dumbbell className="w-4 h-4" />
+                      <span>Programmé</span>
+                    </div>
+                  )}
+
+                  {item.source === 'quest' && (
+                    <div className="flex items-center gap-2 text-sm text-foreground/60 mb-1">
+                      <Target className="w-4 h-4" />
+                      <span>Deadline</span>
+                    </div>
+                  )}
+
+                  {item.location && (
+                    <div className="text-sm text-foreground/60">
+                      <span className="font-medium">Lieu :</span> {item.location}
+                    </div>
+                  )}
+                  {item.description && (
                     <div className="text-sm text-foreground/70 mt-1 italic">
-                      {event.description}
+                      {item.description}
                     </div>
                   )}
-                  <span className={`inline-block mt-2 px-2 py-1 rounded-full text-xs font-medium ${
-                    event.type === 'meeting' ? 'bg-blue-500/20 text-blue-500' :
-                    event.type === 'deadline' ? 'bg-red-500/20 text-red-500' :
-                    event.type === 'reminder' ? 'bg-yellow-500/20 text-yellow-500' :
-                    'bg-green-500/20 text-green-500'
-                  }`}>
-                    {event.type}
-                  </span>
                 </div>
               ))
             ) : (
-              <p className="text-center text-foreground/40 py-8">Aucun événement ce jour</p>
+              <p className="text-center text-foreground/40 py-8">Rien de prévu ce jour</p>
             )}
           </div>
         </div>

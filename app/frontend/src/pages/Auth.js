@@ -42,7 +42,7 @@ const Auth = () => {
         }
       });
     }
-  }, [searchParams]);
+  }, [searchParams, loginWithTokens, navigate, location.state]); // ✅ Toutes les dépendances
 
   // Redirect if already authenticated
   useEffect(() => {

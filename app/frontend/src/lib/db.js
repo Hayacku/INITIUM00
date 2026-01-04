@@ -2,28 +2,30 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('InitiumNextDB');
 
-db.version(1).stores({
+db.version(4).stores({
   users: 'id, email, username, createdAt',
-  quests: 'id, title, category, status, priority, dueDate, xp, parentId, createdAt',
-  habits: 'id, title, category, frequency, streak, lastCompleted, createdAt',
+  quests: 'id, title, category, status, priority, dueDate, projectId, linkedHabitIds, xp, parentId, createdAt',
+  habits: 'id, title, category, frequency, streak, lastCompleted, questId, projectId, createdAt',
   projects: 'id, title, status, priority, progress, createdAt',
   tasks: 'id, projectId, questId, title, status, order, createdAt',
   notes: 'id, title, content, tags, linkedTo, createdAt, updatedAt',
-  training: 'id, type, intensity, duration, xp, date, createdAt, exercises',
-  events: 'id, title, type, startDate, endDate, questId, createdAt',
+  training: 'id, type, intensity, duration, xp, date, scheduleDate, isRecurring, recurringDays, questId, linkedHabitId, createdAt, exercises',
+  events: 'id, title, type, startDate, endDate, questId, trainingId, projectId, createdAt',
   analytics: 'id, date, xpEarned, habitsCompleted, questsCompleted',
   settings: 'id, key, value',
   badges: 'id, userId, type, name, earnedAt',
-  backlinks: 'id, sourceId, targetId, sourceType, targetType'
+  backlinks: 'id, sourceId, targetId, sourceType, targetType',
+  notifications: '++id, title, message, type, read, createdAt',
+  feedback: 'id, type, subject, status, createdAt' // Nouvelle table
 });
 
 export async function initializeData() {
   const userCount = await db.users.count();
-  
+
   if (userCount === 0) {
     const userId = 'user-1';
     const now = new Date();
-    
+
     // User
     await db.users.add({
       id: userId,
@@ -185,63 +187,63 @@ export async function initializeData() {
     ]);
 
     // Training sessions
-      await db.training.bulkAdd([
-        {
-          id: 'training-1',
-          type: 'Cardio',
-          intensity: 'high',
-          duration: 45,
-          xp: 50,
-          date: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          notes: 'Excellente session de course',
-          createdAt: now,
-          exercises: [
-            {
-              name: 'Course à pied',
-              type: 'Cardio',
-              duration: 30,
-              reps: null,
-              sets: null,
-              details: 'Extérieur, rythme élevé'
-            },
-            {
-              name: 'Sprints',
-              type: 'Cardio',
-              duration: 15,
-              reps: 10,
-              sets: 1,
-              details: 'Sprint 100m x10'
-            }
-          ]
-        },
-        {
-          id: 'training-2',
-          type: 'Musculation',
-          intensity: 'medium',
-          duration: 60,
-          xp: 45,
-          date: new Date(Date.now() - 48 * 60 * 60 * 1000),
-          createdAt: now,
-          exercises: [
-            {
-              name: 'Développé couché',
-              type: 'Force',
-              duration: null,
-              reps: 10,
-              sets: 4,
-              details: '60kg, tempo 2-1-2'
-            },
-            {
-              name: 'Tractions',
-              type: 'Force',
-              duration: null,
-              reps: 8,
-              sets: 3,
-              details: 'Poids du corps'
-            }
-          ]
-        }
-      ]);
+    await db.training.bulkAdd([
+      {
+        id: 'training-1',
+        type: 'Cardio',
+        intensity: 'high',
+        duration: 45,
+        xp: 50,
+        date: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        notes: 'Excellente session de course',
+        createdAt: now,
+        exercises: [
+          {
+            name: 'Course à pied',
+            type: 'Cardio',
+            duration: 30,
+            reps: null,
+            sets: null,
+            details: 'Extérieur, rythme élevé'
+          },
+          {
+            name: 'Sprints',
+            type: 'Cardio',
+            duration: 15,
+            reps: 10,
+            sets: 1,
+            details: 'Sprint 100m x10'
+          }
+        ]
+      },
+      {
+        id: 'training-2',
+        type: 'Musculation',
+        intensity: 'medium',
+        duration: 60,
+        xp: 45,
+        date: new Date(Date.now() - 48 * 60 * 60 * 1000),
+        createdAt: now,
+        exercises: [
+          {
+            name: 'Développé couché',
+            type: 'Force',
+            duration: null,
+            reps: 10,
+            sets: 4,
+            details: '60kg, tempo 2-1-2'
+          },
+          {
+            name: 'Tractions',
+            type: 'Force',
+            duration: null,
+            reps: 8,
+            sets: 3,
+            details: 'Poids du corps'
+          }
+        ]
+      }
+    ]);
 
     // Events
     await db.events.bulkAdd([

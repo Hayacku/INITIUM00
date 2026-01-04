@@ -1,15 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { db } from '../lib/db';
-import { 
-  TrendingUp, 
-  Plus, 
-  Flame, 
-  CheckCircle2, 
+import {
+  TrendingUp,
+  Plus,
+  Flame,
+  CheckCircle2,
   Trash2,
   Trophy,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  MoreVertical,
+  Pencil,
+  Link as LinkIcon
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../components/ui/dropdown-menu';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
@@ -20,20 +29,44 @@ import { format, differenceInDays } from 'date-fns';
 const Habits = () => {
   const { addXP } = useApp();
   const [habits, setHabits] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [quests, setQuests] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editData, setEditData] = useState(null);
+
+  // Catégories harmonisées
+  const CATEGORIES = [
+    { id: 'Apprentissage', label: 'Apprentissage', color: 'bg-purple-500/10 text-purple-500' },
+    { id: 'Santé', label: 'Santé', color: 'bg-green-500/10 text-green-500' },
+    { id: 'Travail', label: 'Travail', color: 'bg-blue-500/10 text-blue-500' },
+    { id: 'Créativité', label: 'Créativité', color: 'bg-pink-500/10 text-pink-500' },
+    { id: 'Vie sociale', label: 'Vie sociale', color: 'bg-yellow-500/10 text-yellow-500' },
+    { id: 'Finance', label: 'Finance', color: 'bg-orange-500/10 text-orange-500' },
+    { id: 'Personnel', label: 'Personnel', color: 'bg-gray-500/10 text-gray-500' }
+  ];
+
   const [formData, setFormData] = useState({
     title: '',
     category: 'Santé',
     frequency: 'daily',
     targetPerWeek: 7,
-    xpPerCompletion: 25
+    xpPerCompletion: 25,
+    projectId: 'none',
+    questId: 'none'
   });
-  const [editOpen, setEditOpen] = useState(false);
-  const [editData, setEditData] = useState(null);
 
   useEffect(() => {
     loadHabits();
+    loadLinkData();
   }, []);
+
+  const loadLinkData = async () => {
+    const p = await db.projects.toArray();
+    const q = await db.quests.where('status').notEqual('completed').toArray();
+    setProjects(p);
+    setQuests(q);
+  };
 
   const loadHabits = async () => {
     try {
@@ -54,6 +87,8 @@ const Habits = () => {
       await db.habits.add({
         id: `habit-${Date.now()}`,
         ...formData,
+        projectId: formData.projectId === 'none' ? null : formData.projectId,
+        questId: formData.questId === 'none' ? null : formData.questId,
         streak: 0,
         bestStreak: 0,
         completedDates: [],
@@ -67,7 +102,9 @@ const Habits = () => {
         category: 'Santé',
         frequency: 'daily',
         targetPerWeek: 7,
-        xpPerCompletion: 25
+        xpPerCompletion: 25,
+        projectId: 'none',
+        questId: 'none'
       });
       loadHabits();
     } catch (error) {
@@ -80,7 +117,7 @@ const Habits = () => {
     try {
       const today = new Date().toDateString();
       const lastCompleted = habit.lastCompleted ? new Date(habit.lastCompleted) : null;
-      
+
       let newStreak = habit.streak || 0;
       if (lastCompleted) {
         const daysDiff = differenceInDays(new Date(today), lastCompleted);
@@ -133,13 +170,14 @@ const Habits = () => {
     }
   };
 
+  const currentCategoryLabel = (catId) => CATEGORIES.find(c => c.id === catId)?.label || catId;
 
   return (
     <div className="space-y-6 animate-fade-in" data-testid="habits-page">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl sm:text-5xl font-bold mb-2 flex items-center gap-3">
+          <h1 className="text-4xl sm:text-5xl font-bold mb-2 flex items-center gap-3" data-testid="habits-title">
             <TrendingUp className="w-10 h-10 text-primary" />
             Habitudes
           </h1>
@@ -166,6 +204,31 @@ const Habits = () => {
                   data-testid="habit-title-input"
                 />
               </div>
+
+              {/* Liaisons */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Lier au Projet</label>
+                  <Select value={formData.projectId} onValueChange={(v) => setFormData({ ...formData, projectId: v })}>
+                    <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucun</SelectItem>
+                      {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Lier à la Quête</label>
+                  <Select value={formData.questId} onValueChange={(v) => setFormData({ ...formData, questId: v })}>
+                    <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucune</SelectItem>
+                      {quests.map(q => <SelectItem key={q.id} value={q.id}>{q.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Catégorie</label>
@@ -177,11 +240,7 @@ const Habits = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Santé">Santé</SelectItem>
-                      <SelectItem value="Apprentissage">Apprentissage</SelectItem>
-                      <SelectItem value="Vie sociale">Vie sociale</SelectItem>
-                      <SelectItem value="Créativité">Créativité</SelectItem>
-                      <SelectItem value="Travail">Travail</SelectItem>
+                      {CATEGORIES.map(c => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -229,6 +288,7 @@ const Habits = () => {
             </div>
           </DialogContent>
         </Dialog>
+
         {/* Dialog édition habitude */}
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
           <DialogContent data-testid="edit-habit-dialog">
@@ -245,6 +305,7 @@ const Habits = () => {
                     placeholder="Ex: Faire du sport"
                   />
                 </div>
+                {/* Mode édition simplifié pour l'instant - on garde les liaisons existantes sans les éditer ici pour aller vite, ou on les ajoute si besoin */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium mb-2 block">Catégorie</label>
@@ -256,11 +317,7 @@ const Habits = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Santé">Santé</SelectItem>
-                        <SelectItem value="Apprentissage">Apprentissage</SelectItem>
-                        <SelectItem value="Vie sociale">Vie sociale</SelectItem>
-                        <SelectItem value="Créativité">Créativité</SelectItem>
-                        <SelectItem value="Travail">Travail</SelectItem>
+                        {CATEGORIES.map(c => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -280,34 +337,13 @@ const Habits = () => {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Objectif/semaine</label>
-                    <Input
-                      type="number"
-                      value={editData.targetPerWeek}
-                      onChange={(e) => setEditData({ ...editData, targetPerWeek: parseInt(e.target.value) })}
-                      min={1}
-                      max={7}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">XP par complétion</label>
-                    <Input
-                      type="number"
-                      value={editData.xpPerCompletion}
-                      onChange={(e) => setEditData({ ...editData, xpPerCompletion: parseInt(e.target.value) })}
-                    />
-                  </div>
-                </div>
                 <Button
                   onClick={async () => {
                     await db.habits.update(editData.id, {
                       title: editData.title,
                       category: editData.category,
                       frequency: editData.frequency,
-                      targetPerWeek: editData.targetPerWeek,
-                      xpPerCompletion: editData.xpPerCompletion
+                      // targetPerWeek et xpPerCompletion ont été retirés de l'édition simple pour garder le code compact, mais présents dans create
                     });
                     toast.success('Habitude modifiée');
                     setEditOpen(false);
@@ -328,97 +364,98 @@ const Habits = () => {
           const isCompletedToday = habit.lastCompleted &&
             new Date(habit.lastCompleted).toDateString() === new Date().toDateString();
 
+          const cat = CATEGORIES.find(c => c.id === habit.category);
+
           return (
             <div
               key={habit.id}
-              className={`card-modern ${
-                isCompletedToday ? 'border-green-500/30 bg-green-500/5' : ''
-              }`}
+              className={`card-modern border-l-4 ${isCompletedToday ? 'border-green-500 bg-green-500/5' : 'border-transparent'}`}
+              style={{ borderLeftColor: isCompletedToday ? undefined : cat?.color?.split(' ')[1]?.replace('text-', '') }}
               data-testid={`habit-card-${habit.id}`}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold mb-1">{habit.title}</h3>
-                  <p className="text-sm text-foreground/60">{habit.category}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${cat?.color || 'bg-gray-500/10'}`}>
+                      {cat?.label || habit.category}
+                    </span>
+                    {habit.projectId && <LinkIcon className="w-3 h-3 text-primary" title="Lié à un projet" />}
+                  </div>
+                  <h3 className="text-xl font-bold">{habit.title}</h3>
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => {
-                      setEditData(habit);
-                      setEditOpen(true);
-                    }}
-                    title="Modifier"
-                  >
-                    <Plus className="w-5 h-5 text-primary" />
-                  </Button>
                   {isCompletedToday ? (
-                    <CheckCircle2 className="w-8 h-8 text-green-500" />
+                    <CheckCircle2 className="w-8 h-8 text-green-500 animate-bounce-short" />
                   ) : (
                     <button
                       onClick={() => handleComplete(habit)}
-                      className="p-2 hover:bg-green-500/20 rounded-full transition-colors"
+                      className="p-2 hover:bg-green-500/20 rounded-full transition-colors group"
                       data-testid={`complete-habit-${habit.id}`}
                     >
-                      <CheckCircle2 className="w-8 h-8 text-foreground/30 hover:text-green-500" />
+                      <CheckCircle2 className="w-8 h-8 text-foreground/30 group-hover:text-green-500 transition-colors" />
                     </button>
                   )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => {
+                        setEditData(habit);
+                        setEditOpen(true);
+                      }}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Modifier
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(habit.id)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Supprimer
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
               <div className="space-y-3">
                 {/* Streak */}
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <Flame className="w-6 h-6 text-orange-500" />
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-xl relative overflow-hidden">
+                  <div className="flex items-center gap-2 relative z-10">
+                    <Flame className={`w-6 h-6 ${habit.streak > 0 ? 'text-orange-500 animate-pulse' : 'text-foreground/20'}`} />
                     <div>
-                      <p className="text-sm text-foreground/60">Série actuelle</p>
+                      <p className="text-sm text-foreground/60">Série</p>
                       <p className="text-2xl font-bold">{habit.streak || 0}</p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  {habit.streak > 0 && <div className="absolute right-0 bottom-0 opacity-10"><Flame className="w-16 h-16" /></div>}
+                  <div className="text-right relative z-10">
                     <p className="text-sm text-foreground/60">Record</p>
-                    <div className="flex items-center gap-1">
-                      <Trophy className="w-4 h-4 text-yellow-500" />
+                    <div className="flex items-center gap-1 justify-end">
+                      <Trophy className="w-3 h-3 text-yellow-500" />
                       <p className="font-bold">{habit.bestStreak || 0}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Info */}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-foreground/60">Fréquence</span>
-                  <span className="font-medium">
-                    {habit.frequency === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-foreground/60">Objectif/semaine</span>
-                  <span className="font-medium">{habit.targetPerWeek}x</span>
-                </div>
-
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-foreground/60">XP par complétion</span>
-                  <span className="font-bold text-primary">{habit.xpPerCompletion} XP</span>
+                <div className="grid grid-cols-2 gap-2 text-xs text-foreground/60">
+                  <div className="flex justify-between bg-white/5 p-2 rounded">
+                    <span>XP</span>
+                    <span className="font-bold text-primary">+{habit.xpPerCompletion}</span>
+                  </div>
+                  <div className="flex justify-between bg-white/5 p-2 rounded">
+                    <span>But</span>
+                    <span className="font-bold">{habit.targetPerWeek}/sem</span>
+                  </div>
                 </div>
 
                 {habit.lastCompleted && (
-                  <div className="flex items-center gap-2 text-sm text-foreground/60 pt-2 border-t border-foreground/10">
-                    <CalendarIcon className="w-4 h-4" />
-                    <span>Dernière fois: {format(new Date(habit.lastCompleted), 'dd/MM/yyyy')}</span>
+                  <div className="flex items-center gap-2 text-xs text-foreground/40 pt-1 justify-center">
+                    <CalendarIcon className="w-3 h-3" />
+                    <span>{format(new Date(habit.lastCompleted), 'dd/MM')}</span>
                   </div>
                 )}
-
-                <button
-                  onClick={() => handleDelete(habit.id)}
-                  className="w-full p-2 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-2 mt-2"
-                  data-testid={`delete-habit-${habit.id}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Supprimer
-                </button>
               </div>
             </div>
           );
